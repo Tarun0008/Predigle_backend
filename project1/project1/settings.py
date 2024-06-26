@@ -78,10 +78,15 @@ WSGI_APPLICATION = 'project1.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'djongo',
+        'NAME': 'Backend',
+        'ENFORCE_SCHEMA':False,
+        'CLIENT': {
+            'host': 'mongodb://localhost:27017',
+        }
     }
 }
+
 
 
 # Password validation
@@ -125,9 +130,9 @@ STATIC_URL = '/static/'
 
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+
 EMAIL_HOST_USER = '71762131056@cit.edu.in'
-EMAIL_HOST_PASSWORD = 'xhsf trrd qdtg jhby'
+EMAIL_HOST_PASSWORD = 'Tarun@1089'
 DEFAULT_FROM_EMAIL='71762131056@cit.edu.in'
 EMAIL_USE_TLS=True
 
