@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'app1',
     'django.contrib.sites',  # Required for Anymail
     'anymail',  
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
@@ -50,6 +51,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
 ]
 
 ROOT_URLCONF = 'project1.urls'
@@ -135,4 +137,6 @@ EMAIL_HOST_USER = '71762131056@cit.edu.in'
 EMAIL_HOST_PASSWORD = 'Tarun@1089'
 DEFAULT_FROM_EMAIL='71762131056@cit.edu.in'
 EMAIL_USE_TLS=True
+
+
 

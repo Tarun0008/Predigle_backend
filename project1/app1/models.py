@@ -15,20 +15,6 @@ class Agent(models.Model):
     is_available = models.BooleanField(default=True)
     
 
-
-
-class SupportTicket(models.Model):
-    ticket_id = models.CharField(primary_key=True, max_length=36, default=uuid.uuid4, editable=False)
-    customer_name = models.CharField(max_length=255)
-    email = models.EmailField(max_length=255)
-    subject = models.CharField(max_length=255)
-    description = models.TextField()
-    status = models.CharField(max_length=50, default='open')
-    created_at = models.DateTimeField(default=datetime.now)
-    user_id = models.CharField(max_length=36, null=True, blank=True)
-    assigned_agent = models.ForeignKey(Agent, on_delete=models.SET_NULL, null=True, blank=True)
-
-
 class User(models.Model):
     user_id = models.CharField(primary_key=True,max_length=36, default=uuid.uuid4, editable=False)
     username = models.CharField(max_length=150, unique=True)
@@ -36,7 +22,26 @@ class User(models.Model):
     password = models.CharField(max_length=128)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
-    
+
+class SupportTicket(models.Model):
+    ticket_id = models.CharField(primary_key=True, max_length=36, default=uuid.uuid4, editable=False)
+    subject = models.CharField(max_length=255)
+    description = models.TextField()
+    status = models.CharField(max_length=50, default='open')
+    created_at = models.DateTimeField(default=datetime.now)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_agent = models.ForeignKey(Agent, on_delete=models.SET_NULL, null=True, blank=True)
+
+class CompletedTicket(models.Model):
+    ticket_id = models.CharField(primary_key=True, max_length=36, editable=False)
+    subject = models.CharField(max_length=255)
+    description = models.TextField()
+    status = models.CharField(max_length=50, default='closed')
+    created_at = models.DateTimeField()
+    completed_at = models.DateTimeField(default=datetime.now)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_agent = models.ForeignKey(Agent, on_delete=models.SET_NULL, null=True, blank=True)
+
 
 
 class Record(models.Model):
