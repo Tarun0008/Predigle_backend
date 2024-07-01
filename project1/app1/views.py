@@ -3,6 +3,7 @@ import uuid
 import logging
 from django.contrib.auth.hashers import make_password
 from .models import SupportTicket, CompletedTicket, Agent, User
+from rest_framework import status
 from django.views.decorators.http import require_http_methods
 from .models import SupportTicket
 from .models import User
@@ -15,6 +16,7 @@ from .models import Agent
 from django.utils import timezone
 from django.contrib.auth.hashers import check_password
 from django.conf import settings
+from rest_framework.exceptions import NotFound
 from django.contrib.sessions.models import Session
 from .models import Record
 from django.contrib.auth import authenticate, login
@@ -80,10 +82,11 @@ def login_user(request):
         if not check_password(password, user.password):
             logger.error("Invalid password for username: %s", username)
             return JsonResponse({'message': 'Invalid username or password'}, status=400)
-        
+        request.session.clear()
         # Store user_id in the session
         request.session['user_id'] = str(user.user_id)
         print(f"User ID stored in session: {request.session['user_id']}")
+        request.session.save()
         print(request.session.items())
         
         # Return a success response with the user ID
@@ -93,17 +96,14 @@ def login_user(request):
 
 
 @csrf_exempt
-@swagger_auto_schema(methods=['post'], request_body=openapi.Schema(
-    type=openapi.TYPE_OBJECT,
-    properties={
-        'subject': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket subject'),
-        'description': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket description'),
-    }
-), responses={200: 'Ticket created successfully', 400: 'No available agents', 403: 'User not logged in', 500: 'An error occurred'})
 @api_view(['POST'])
 def add_ticket(request, subject, description):
     try:
         print("add_ticket function called")
+        
+        usr_id = request.session.get('user_id')
+
+        print(f"User ID from session: {usr_id}")
 
         all_agents = Agent.objects.all()
         available_agents = [agent for agent in all_agents if agent.is_available]
@@ -113,19 +113,17 @@ def add_ticket(request, subject, description):
         if available_agents:
             selected_agent = available_agents[0]
             
-            # Retrieve user_id from session
-            user_id = request.session.get('user_id')
-            print(f"User ID from session: {user_id}")
 
-            if not user_id:
+
+            if not usr_id:
                 logger.error("User not logged in")
                 return JsonResponse({'message': 'User is not logged in'}, status=403)
 
             try:
-                user = User.objects.get(user_id=user_id)
+                user = User.objects.get(user_id=usr_id)
                 
             except User.DoesNotExist:
-                logger.error("User not found for user_id: %s", user_id)
+                logger.error("User not found for user_id: %s", usr_id)
                 return JsonResponse({'message': 'User not found'}, status=404)
 
 
@@ -142,7 +140,7 @@ def add_ticket(request, subject, description):
 
             selected_agent.is_available = False
             selected_agent.save()
-            logger.info("Ticket %s created successfully for user %s", ticket.ticket_id, user_id)
+            logger.info("Ticket %s created successfully for user %s", ticket.ticket_id, usr_id)
             return JsonResponse({'message': 'Ticket created successfully', 'ticket_id': ticket.ticket_id})
         else:
             logger.error("No available agents at the moment")
@@ -394,7 +392,7 @@ def update_agent(request, agent_id):
             return JsonResponse({"error": f"Failed to send webhook notification: {e}"}, status=500)
 
         logger.info("Agent with ID %s updated successfully", agent_id)
-        return JsonResponse({"message": f"Agent with ID {agent_id} updated successfully"})
+        return JsonResponse({"message": f"Agent with ID {agent_id} updated successfully and notification send to webhook"})
     else:
         logger.error("Method not allowed for update_agent")
         return JsonResponse({"error": "Method not allowed."}, status=405)
@@ -546,6 +544,9 @@ def close_ticket(request):
                 'email': assigned_agent.email if assigned_agent else None,
             }
         }
+        if assigned_agent:
+            assigned_agent.is_available = True
+            assigned_agent.save()
 
         try:
             response = requests.post(webhook_url, json=payload)
@@ -565,3 +566,306 @@ def close_ticket(request):
     except Exception as e:
         logger.error("An error occurred: %s", str(e))
         return JsonResponse({'message': f'An error occurred: {e}'}, status=500)
+    
+
+
+@csrf_exempt
+@swagger_auto_schema(
+    method='get',
+    responses={
+        200: openapi.Response(
+            description='User tickets retrieved successfully',
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'open_tickets': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'ticket_id': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket ID'),
+                                'subject': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket subject'),
+                                'description': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket description'),
+                                'status': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket status'),
+                                'created_at': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket creation date')
+                            }
+                        )
+                    ),
+                    'closed_tickets': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'ticket_id': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket ID'),
+                                'subject': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket subject'),
+                                'description': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket description'),
+                                'status': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket status'),
+                                'created_at': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket creation date'),
+                                'completed_at': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket completion date')
+                            }
+                        )
+                    )
+                }
+            )
+        ),
+        400: 'User ID not found in session',
+        404: 'User not found',
+        500: 'An error occurred'
+    }
+)
+@csrf_exempt
+@api_view(['GET'])
+
+def use_tickets(request):
+
+    try:
+        user_id = request.session.get('user_id')
+        print(user_id)
+        if not user_id:
+            return JsonResponse({'message': 'User ID not found in session'}, status=400)
+
+        try:
+            user = User.objects.get(user_id=user_id)
+        except User.DoesNotExist:
+            raise NotFound('User not found')
+
+        open_tickets = SupportTicket.objects.filter(user=user)
+        closed_tickets = CompletedTicket.objects.filter(user=user)
+
+        open_tickets_data = [
+            {
+                'ticket_id': ticket.ticket_id,
+                'subject': ticket.subject,
+                'description': ticket.description,
+                'status': ticket.status,
+                'created_at': ticket.created_at
+            }
+            for ticket in open_tickets
+        ]
+
+        closed_tickets_data = [
+            {
+                'ticket_id': ticket.ticket_id,
+                'subject': ticket.subject,
+                'description': ticket.description,
+                'status': ticket.status,
+                'created_at': ticket.created_at,
+                'completed_at': ticket.completed_at
+            }
+            for ticket in closed_tickets
+        ]
+
+        response_data = {
+            'open_tickets': open_tickets_data,
+            'closed_tickets': closed_tickets_data
+        }
+
+        return JsonResponse(response_data, status=200)
+
+    except Exception as e:
+        return JsonResponse({'message': f'An error occurred: {e}'}, status=500)
+@swagger_auto_schema(
+    method='post',
+    manual_parameters=[
+        openapi.Parameter('subject', openapi.IN_QUERY, description="Subject of the ticket", type=openapi.TYPE_STRING),
+        openapi.Parameter('description', openapi.IN_QUERY, description="Description of the ticket", type=openapi.TYPE_STRING)
+    ],
+    responses={
+        200: openapi.Response('Ticket created successfully', openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'message': openapi.Schema(type=openapi.TYPE_STRING),
+                'ticket_id': openapi.Schema(type=openapi.TYPE_STRING),
+            }
+        )),
+        400: openapi.Response('No available agents at the moment'),
+        403: openapi.Response('User is not logged in'),
+        404: openapi.Response('User not found'),
+        500: openapi.Response('An error occurred')
+    }
+)
+@csrf_exempt
+@api_view(['POST'])
+def user_tickets(request,subject,description):
+
+    try:
+        user_id = request.session.get('user_id')
+        print(user_id)
+        if not user_id:
+            return JsonResponse({'message': 'User ID not found in session'}, status=400)
+
+        all_agents = Agent.objects.all()
+        available_agents = [agent for agent in all_agents if agent.is_available]
+        
+        print(f"Available Agents: {available_agents}")
+
+        if available_agents:
+            selected_agent = available_agents[0]
+            
+
+
+            if not user_id:
+                logger.error("User not logged in")
+                return JsonResponse({'message': 'User is not logged in'}, status=403)
+
+            try:
+                user = User.objects.get(user_id=user_id)
+                
+            except User.DoesNotExist:
+                logger.error("User not found for user_id: %s", user_id)
+                return JsonResponse({'message': 'User not found'}, status=404)
+
+
+            ticket = SupportTicket.objects.create(
+                ticket_id=str(uuid.uuid4()),
+                subject=subject,
+                description=description,
+                status='Open',
+                user=user,  
+                created_at=timezone.now(),
+                assigned_agent=selected_agent
+            )
+            ticket.save()
+
+            selected_agent.is_available = False
+            selected_agent.save()
+            logger.info("Ticket %s created successfully for user %s", ticket.ticket_id, user_id)
+            return JsonResponse({'message': 'Ticket created successfully', 'ticket_id': ticket.ticket_id})
+        else:
+            logger.error("No available agents at the moment")
+            return JsonResponse({'message': 'No available agents at the moment'}, status=400)
+    except Exception as e:
+        logger.error("An error occurred in add_ticket: %s", str(e))
+        print(f"Error: {e}")
+        return JsonResponse({'message': f'An error occurred: {e}'}, status=500)
+    
+    
+@csrf_exempt
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            'tk', openapi.IN_PATH, description="Ticket ID",
+            type=openapi.TYPE_STRING, required=True
+        )
+    ],
+    responses={
+        200: openapi.Response(
+            description='Support ticket details retrieved successfully',
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'ticket_id': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket ID'),
+                    'subject': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket subject'),
+                    'description': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket description'),
+                    'status': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket status'),
+                    'created_at': openapi.Schema(type=openapi.TYPE_STRING, description='Ticket creation date'),
+                    'user': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'user_id': openapi.Schema(type=openapi.TYPE_STRING, description='User ID'),
+                            'username': openapi.Schema(type=openapi.TYPE_STRING, description='Username'),
+                            'email': openapi.Schema(type=openapi.TYPE_STRING, description='User email')
+                        }
+                    ),
+                    'assigned_agent': openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'agent_id': openapi.Schema(type=openapi.TYPE_STRING, description='Agent ID'),
+                            'name': openapi.Schema(type=openapi.TYPE_STRING, description='Agent name'),
+                            'email': openapi.Schema(type=openapi.TYPE_STRING, description='Agent email')
+                        }
+                    )
+                }
+            )
+        ),
+        400: 'Ticket ID is required',
+        404: 'SupportTicket not found',
+        500: 'An error occurred'
+    }
+)
+
+@api_view(['GET'])
+def support_ticket_detail(request,tk):
+    ticket_id = tk
+    if not ticket_id:
+        logger.error("detail:" "Ticket ID is required")
+        return JsonResponse({"detail": "Ticket ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        logger.info("Details found")
+        ticket = SupportTicket.objects.select_related('user', 'assigned_agent').get(ticket_id=ticket_id)
+    except SupportTicket.DoesNotExist:
+        logger.error("No ticket found")
+        raise NotFound('SupportTicket not found')
+
+    ticket_data = {
+        'ticket_id': ticket.ticket_id,
+        'subject': ticket.subject,
+        'description': ticket.description,
+        'status': ticket.status,
+        'created_at': ticket.created_at,
+        'user': {
+            'user_id': ticket.user.user_id if ticket.user else None,
+            'username': ticket.user.username if ticket.user else None,
+            'email': ticket.user.email if ticket.user else None
+        },
+        'assigned_agent': {
+            'agent_id': ticket.assigned_agent.agent_id if ticket.assigned_agent else None,
+            'name': ticket.assigned_agent.name if ticket.assigned_agent else None,
+            'email': ticket.assigned_agent.email if ticket.assigned_agent else None
+        }
+    }
+
+    return JsonResponse(ticket_data, status=status.HTTP_200_OK)
+
+@csrf_exempt
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            'agt', openapi.IN_PATH, description="Agent ID",
+            type=openapi.TYPE_STRING, required=True
+        )
+    ],
+    responses={
+        200: openapi.Response(
+            description='Agent tickets retrieved successfully',
+            schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'agent_id': openapi.Schema(type=openapi.TYPE_STRING, description='Agent ID'),
+                    'tickets': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(type=openapi.TYPE_STRING, description='Ticket ID')
+                    )
+                }
+            )
+        ),
+        400: 'Agent ID is required',
+        404: 'Agent not found',
+        500: 'An error occurred'
+    }
+)
+@api_view(['GET'])
+def agent_tickets(request,agt):
+    agent_id = agt
+    if not agent_id:
+        logger.error("Agent id not found")
+        return JsonResponse({"detail": "Agent ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        agent = Agent.objects.get(agent_id=agent_id)
+        logger.info("Id found")
+    except Agent.DoesNotExist:
+        raise NotFound('Agent not found')
+
+    tickets = SupportTicket.objects.filter(assigned_agent=agent).values_list('ticket_id', flat=True)
+
+    return JsonResponse({
+        "agent_id": agent.agent_id,
+        "tickets": list(tickets)
+    }, status=status.HTTP_200_OK)
+
+
+

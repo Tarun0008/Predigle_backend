@@ -19,17 +19,16 @@ schema_view = get_schema_view(
 
 
 
-
 urlpatterns=[
 
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    #path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path('',views.index),
     path('add/',views.add_detail),
     ##path('show/',views.all_person),
     path('user/<str:username>/<str:email>/<str:password>/',views.add_user),
-    path('ticket/<str:subject>/<str:description>/',views.add_ticket),
-    re_path(r'^ticket/delete/(?P<ticket_id>[0-9a-f-]+)/$', views.delete_ticket, name='delete_ticket'),
+    #path('ticket/<str:subject>/<str:description>/',views.add_ticket),
+    path('delete/<str:ticket_id>/',views.delete_ticket),
     path('update_user/<str:user_id>/', views.update_user),
     path('search/',views.search_tickets),
     path('add_agent/', views.add_agent),
@@ -37,5 +36,9 @@ urlpatterns=[
     path('webhook/', views.webhook_receiver),
     path('ticket/close/',views.close_ticket),
     path('update_agent/<str:agent_id>/', views.update_agent),
+    path('all/<str:tk>/',views.support_ticket_detail),
+    path('myticket/',views.use_tickets),
+    path('agent/<str:agt>/',views.agent_tickets),
+    path('mytickets/<str:subject>/<str:description>/',views.user_tickets)
 
 ]

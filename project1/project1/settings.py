@@ -140,3 +140,4 @@ EMAIL_USE_TLS=True
 
 
 
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
