@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'app1',
-    'django.contrib.sites',  # Required for Anymail
+    'django.contrib.sites',  
     'anymail',  
     'drf_yasg',
 ]
@@ -134,7 +134,7 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 
 EMAIL_HOST_USER = '71762131056@cit.edu.in'
-EMAIL_HOST_PASSWORD = 'Tarun@1089'
+EMAIL_HOST_PASSWORD = ''
 DEFAULT_FROM_EMAIL='71762131056@cit.edu.in'
 EMAIL_USE_TLS=True
 

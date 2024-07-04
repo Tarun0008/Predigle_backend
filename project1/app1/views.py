@@ -26,7 +26,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import api_view
 
-# Set up logging
+# logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.FileHandler('app.log')
@@ -39,11 +39,13 @@ def index(request):
     return HttpResponse("<h1>app is running</h1>")
 
 def add_detail(request):
-    # Create a new record
     record = Record(first="tarun", last="S R")
     record.save()
     
     return HttpResponse("added")
+
+
+
 @csrf_exempt
 @swagger_auto_schema(method='post', request_body=openapi.Schema(
     type=openapi.TYPE_OBJECT,
@@ -68,33 +70,29 @@ def login_user(request):
         password = data.get('password')
         
         if not username or not password:
-            logger.error("Missing fields in login request")
+            logger.error("Missing fields in login ")
             return JsonResponse({'message': 'Missing fields'}, status=400)
         
         try:
-            # Fetch the user by username
             user = User.objects.get(username=username)
         except User.DoesNotExist:
             logger.error("Invalid username: %s", username)
             return JsonResponse({'message': 'Invalid username or password'}, status=400)
         
-        # Check if the password matches
         if not check_password(password, user.password):
             logger.error("Invalid password for username: %s", username)
             return JsonResponse({'message': 'Invalid username or password'}, status=400)
         request.session.clear()
-        # Store user_id in the session
         request.session['user_id'] = str(user.user_id)
-        print(f"User ID stored in session: {request.session['user_id']}")
+        print(f"User ID stored : {request.session['user_id']}")
         request.session.save()
         print(request.session.items())
         
-        # Return a success response with the user ID
         return JsonResponse({'message': 'Login successful', 'user_id': str(user.user_id)})
-    logger.error("Method not allowed for login_user")
+    logger.error("Method not allowed")
     return JsonResponse({'message': 'Method not allowed'}, status=405)
 
-
+'''
 @csrf_exempt
 @api_view(['POST'])
 def add_ticket(request, subject, description):
@@ -149,7 +147,7 @@ def add_ticket(request, subject, description):
         logger.error("An error occurred in add_ticket: %s", str(e))
         print(f"Error: {e}")
         return JsonResponse({'message': f'An error occurred: {e}'}, status=500)
-    
+    '''
 
 @csrf_exempt
 @swagger_auto_schema(methods=['post'], request_body=openapi.Schema(
@@ -168,10 +166,8 @@ def add_agent(request):
         email = data.get('email')
         phone_number = data.get('phone_number')
 
-        # Create a unique ID for the agent
         agent_id = str(uuid.uuid4())
         
-        # Create the agent with the extracted data
         agent = Agent(
             agent_id=agent_id,
             name=name,
@@ -240,8 +236,8 @@ def delete_ticket(request, ticket_id):
     try:
         ticket = SupportTicket.objects.get(ticket_id=ticket_id)
         ticket.delete()
-        logger.info("Support ticket with ID %s deleted successfully", ticket_id)
-        return HttpResponse(f"Support ticket with ID: {ticket_id} deleted successfully.")
+        logger.info(" ticket with ID %s deleted successfully", ticket_id)
+        return HttpResponse(f" ticket with ID: {ticket_id} deleted successfully.")
     except SupportTicket.DoesNotExist:
         logger.error("Ticket with ID %s does not exist", ticket_id)
         return HttpResponse(f"Ticket with ID {ticket_id} does not exist.", status=404)
@@ -259,7 +255,6 @@ def webhook_receiver(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            # Process the received data as needed
             logger.info("Webhook received successfully with data: %s", data)
             return JsonResponse({"message": "Webhook received successfully!"})
         except json.JSONDecodeError:
@@ -298,17 +293,17 @@ def update_user(request, user_id):
             logger.error("Invalid JSON format in update_user")
             return JsonResponse({"error": "Invalid JSON format"}, status=400)
         
-        # Update user fields if provided in the request
         if 'username' in data:
             user.username = data['username']
         if 'email' in data:
             user.email = data['email']
         if 'password' in data:
-            user.password = data['password']  # Ensure to hash the password in a real application
+            user.password = make_password(data['password'])
+
         
         user.save()
 
-        # Webhook URL to notify the user
+       
         webhook_url = 'http://localhost:8000/app1/webhook/' 
         payload = {
             "message": f"User with ID {user_id} has been updated.",
@@ -360,7 +355,7 @@ def update_agent(request, agent_id):
             logger.error("Invalid JSON format in update_agent")
             return JsonResponse({"error": "Invalid JSON format"}, status=400)
         
-        # Update agent fields if provided in the request
+        
         if 'name' in data:
             agent.name = data['name']
         if 'email' in data:
@@ -372,7 +367,7 @@ def update_agent(request, agent_id):
 
         agent.save()
 
-        # Webhook URL to notify about agent update
+      
         webhook_url = 'http://localhost:8000/app1/webhook/' 
         payload = {
             "message": f"Agent with ID {agent_id} has been updated.",
@@ -402,7 +397,13 @@ def update_agent(request, agent_id):
 @csrf_exempt
 @swagger_auto_schema(methods=['get'], manual_parameters=[
     openapi.Parameter('ticket_id', openapi.IN_QUERY, description="Filter by ticket ID", type=openapi.TYPE_STRING),
-    openapi.Parameter('date', openapi.IN_QUERY, description="Filter by creation date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+    openapi.Parameter('date_gt', openapi.IN_QUERY, description="Filter date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+     openapi.Parameter('date_lt', openapi.IN_QUERY, description="Filter date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+    openapi.Parameter('date_eq', openapi.IN_QUERY, description="Filter date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+    openapi.Parameter('page', openapi.IN_QUERY, description="Page Number", type=openapi.TYPE_STRING),
+    openapi.Parameter('page_size', openapi.IN_QUERY, description="Page size", type=openapi.TYPE_STRING),
+   
+    
 ], responses={200: 'Search results returned successfully', 500: 'An error occurred'})
 @api_view(['GET'])
 def search_tickets(request):
@@ -437,7 +438,6 @@ def search_tickets(request):
                 logger.error("Invalid date format for date_eq: %s", date_eq)
                 return JsonResponse({"error": "Invalid date format"}, status=400)
 
-        # Execute the query
         try:
             results = SupportTicket.objects.filter(**match_stage).order_by('created_at')
             logger.info("Search tickets results: %s", results)
@@ -445,7 +445,6 @@ def search_tickets(request):
             logger.error("No tickets found matching criteria")
             return JsonResponse({"error": "No tickets found matching"}, status=404)
 
-        # Paginate results
         paginator = Paginator(results, page_size)
         try:
             paginated_results = paginator.page(page)
@@ -454,7 +453,6 @@ def search_tickets(request):
         except EmptyPage:
             paginated_results = paginator.page(paginator.num_pages)
 
-        # Serialize results
         serialized_results = list(paginated_results.object_list.values())
 
         response = {
@@ -491,14 +489,12 @@ def close_ticket(request):
 
         ticket = SupportTicket.objects.get(ticket_id=ticket_id)
         logger.info("Closing ticket: %s", ticket_id)
-
-        # Handle case where user may not exist
+        
         try:
             user = ticket.user
         except User.DoesNotExist:
             user = None
         
-        # Handle case where agent may not exist
         try:
             assigned_agent = ticket.assigned_agent
         except Agent.DoesNotExist:
@@ -516,17 +512,14 @@ def close_ticket(request):
         )
         completed_ticket.save()
 
-        # Update agent availability if agent exists
         if assigned_agent:
             assigned_agent.is_available = True
             assigned_agent.save()
 
-        # Delete the original ticket
         ticket.delete()
         
         logger.info("Ticket %s closed successfully", ticket_id)
 
-        # Send webhook notification
         webhook_url = 'http://localhost:8000/app1/webhook/'
         payload = {
             "message": f"Ticket has been closed.",
@@ -866,6 +859,3 @@ def agent_tickets(request,agt):
         "agent_id": agent.agent_id,
         "tickets": list(tickets)
     }, status=status.HTTP_200_OK)
-
-
-
